@@ -21,7 +21,6 @@
     "standard": "^17.0.0"
   },
   "dependencies": {
-    "@hyperswarm/dht": "^6.5.0",
     "dns-socket": "^4.2.2",
     "dns2": "^2.0.5",
     "graceful-goodbye": "^1.2.1",
