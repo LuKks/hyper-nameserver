@@ -1,50 +1,59 @@
+#!/usr/bin/env node
+
+const os = require('os')
+const path = require('path')
+
+const minimist = require('minimist')
 const dns2 = require('dns2')
 const { Packet } = require('dns2')
-const goodbye = require('graceful-goodbye')
 const psl = require('psl')
+const goodbye = require('graceful-goodbye')
+
+const Hypercore = require('hypercore')
+const Hyperbee = require('hyperbee')
+const Hyperswarm = require('hyperswarm')
+const HypercoreId = require('hypercore-id-encoding')
+
 const { sanitizeDomain, validateDomain } = require('./lib/domain.js')
 const { getNameserversFromAuthorities } = require('./lib/dns.js')
 const NameserverError = require('./lib/errors.js')
 
-const Hypercore = require('hypercore')
-const Hyperbee = require('hyperbee')
-// const RAM = require('random-access-memory')
-const Hyperswarm = require('hyperswarm')
-const HypercoreId = require('hypercore-id-encoding')
+const argv = minimist(process.argv.slice(2))
+
+if (!argv._[0]) errorAndExit('Usage example: hyper-nameserver <key> [--option <value>]')
 
 const server = dns2.createServer({
   udp: true,
   tcp: true
-  // + doh
+  // TODO: DoH
 })
 
-// + should read core key from config or argv
-const core = new Hypercore('./hypercore-nameserver', HypercoreId.decode('b8ghiymmtz6ydhu41rqbb713q6p3g43fhtfkc7sk6pjhg9ap7xiy'))
-const bee = new Hyperbee(core, { keyEncoding: 'utf-8' })
+const SERVERDIR = argv.storage || path.join(os.homedir(), '.hyper-nameserver', 'server')
+
+const core = new Hypercore(SERVERDIR, HypercoreId.decode(argv._[0]))
+const db = new Hyperbee(core, { keyEncoding: 'utf-8' })
 
 const TYPES = new Map()
 for (const k in Packet.TYPE) TYPES.set(Packet.TYPE[k], k)
 
-// + DNSKEY 48  RFC 4034  DNS Key record  The key record used in DNSSEC. Uses the same format as the KEY record.
-// + HTTPS  65  IETF Draft  HTTPS Binding RR that improves performance for clients that need to resolve many resources to access a domain. More info in this IETF Draft by DNSOP Working group and Akamai technologies.
-
-main()
+main().catch(err => {
+  console.error(err)
+  process.exit(1)
+})
 
 async function main () {
-  await core.ready()
-  await bee.ready()
+  await db.ready()
 
-  if (core.writable) throw new Error('Core should be readable only')
+  if (db.writable) throw new Error('Core should be readable only')
 
   const swarm = new Hyperswarm()
-  goodbye(() => swarm.destroy(), 2)
-  swarm.on('connection', onsocket.bind(null, swarm, core))
-  swarm.join(core.discoveryKey)
-  const done = core.findingPeers()
+  const done = db.core.findingPeers()
+  swarm.on('connection', onsocket.bind(null, swarm, db))
+  swarm.join(db.discoveryKey)
   swarm.flush().then(done, done)
-  // await core.update()
 
-  core.download()
+  db.core.download()
+
   core.on('download', function (index, byteLength, from) {
     const remote = from.stream.rawStream.remoteHost + ':' + from.stream.rawStream.remotePort
     console.log('Downloaded block #' + index, 'from', remote)
@@ -67,12 +76,12 @@ async function main () {
   })
 
   server.listen({
-    udp: { port: 53, address: '0.0.0.0', type: 'udp4' },
-    tcp: { port: 53, address: '0.0.0.0' } // + is it actually needed?
+    udp: { port: argv.port || 53, address: '0.0.0.0', type: 'udp4' },
+    tcp: { port: argv.port || 53, address: '0.0.0.0' } // TODO: Is TCP actually needed?
   })
 
-  // + wait for server
   goodbye(() => server.close(), 1)
+  goodbye(() => swarm.destroy(), 2)
 }
 
 async function onrequest (request, response, send, from) {
@@ -83,13 +92,13 @@ async function onrequest (request, response, send, from) {
 
   const question = request.questions[0]
 
-  const name = sanitizeDomain(question.name) // + improve domain name validation
+  const name = sanitizeDomain(question.name) // TODO: Improve domain name validation
   validateDomain(name)
 
   const TYPE = TYPES.get(question.type)
   if (TYPE === undefined) throw new NameserverError('Type not supported (' + question.type + ')', 'TYPE_NOT_SUPPORTED')
 
-  // + class 1 IN?
+  // TODO: Class 1 IN?
 
   // Query directly for now
   if (TYPE === 'NS') {
@@ -101,7 +110,7 @@ async function onrequest (request, response, send, from) {
         name,
         type: Packet.TYPE[TYPE],
         class: Packet.CLASS.IN,
-        ttl: 1, // + obvs should set a better ttl
+        ttl: 1, // TODO: Should set a better ttl
         ns: nameserver
       })
     }
@@ -110,8 +119,9 @@ async function onrequest (request, response, send, from) {
     return
   }
 
-  const parsed = psl.parse(name) // + this could throw? // + it sometimes parsed.domain is undefined, still don't know the original input
-  const domain = bee.sub(parsed.domain, { keyEncoding: 'utf-8', valueEncoding: 'json' })
+  // TODO: Sometimes parsed.domain is undefined, still don't know the original input
+  const parsed = psl.parse(name) // TODO: Could `psl.parse` throw?
+  const domain = db.sub(parsed.domain, { keyEncoding: 'utf-8', valueEncoding: 'json' }) // TODO: Use sub-encoder
   const record = domain.sub(TYPE, { keyEncoding: 'utf-8', valueEncoding: 'json' }) // A, CNAME, MX, TXT, SRV, NS
   const address = await record.get(name, { timeout: 15000 })
 
@@ -123,19 +133,19 @@ async function onrequest (request, response, send, from) {
 
   console.log('DNS request (response)', [name, TYPE, address.value], remoteInfo, simplerReq(request))
 
-  // + allow array of addresses for simple load-balancing
+  // TODO: Allow array of addresses for simple load-balancing
 
   response.answers.push({
     name,
     type: Packet.TYPE[TYPE],
     class: Packet.CLASS.IN,
-    ttl: 1, // + obvs should set a better ttl
+    ttl: 1, // TODO: Should set a better ttl
     address: address.value
   })
 
   send(response)
 
-  // + probably add some optional analytics, store important info about requests, responses, etc
+  // TODO: Probably add some optional analytics, store important info about requests, responses, etc
 }
 
 server.on('requestError', function (error) {
@@ -150,7 +160,7 @@ server.on('close', function () {
   console.log('Server closed')
 })
 
-function onsocket (swarm, core, socket, peerInfo) {
+function onsocket (swarm, db, socket, peerInfo) {
   const remote = socket.rawStream.remoteHost + ':' + socket.rawStream.remotePort
   const pk = HypercoreId.encode(peerInfo.publicKey)
 
@@ -158,10 +168,15 @@ function onsocket (swarm, core, socket, peerInfo) {
   socket.on('close', () => console.log('(Swarm) Peer closed (' + swarm.connections.size + ')', remote, pk))
   socket.on('error', (err) => console.error('(Swarm) Peer error', err, pk))
 
-  core.replicate(socket)
+  db.replicate(socket)
 }
 
 function simplerReq (request) {
   const req = JSON.parse(JSON.stringify(request)) // Just to make sure, as this is temp
   return Object.assign({}, req, { header: null, headerId: req.header.id })
+}
+
+function errorAndExit (message) {
+  console.error('Error:', message)
+  process.exit(1)
 }

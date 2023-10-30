@@ -1,21 +1,25 @@
 {
   "name": "hyper-nameserver",
   "version": "0.0.1",
-  "description": "Nameserver for decentralized records",
+  "description": "Nameserver with Hyperbee (experiment)",
   "main": "index.js",
+  "bin": {
+    "hyper-nameserver": "./index.js",
+    "hyper-nameserver-registry": "./registry.js"
+  },
   "scripts": {
-    "test": "standard && brittle test.js"
+    "test": "standard"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/holepunchto/hyper-nameserver.git"
+    "url": "https://github.com/LuKks/hyper-nameserver.git"
   },
   "author": "Lucas Barrena (LuKks)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/holepunchto/hyper-nameserver/issues"
+    "url": "https://github.com/LuKks/hyper-nameserver/issues"
   },
-  "homepage": "https://github.com/holepunchto/hyper-nameserver",
+  "homepage": "https://github.com/LuKks/hyper-nameserver",
   "devDependencies": {
     "brittle": "^3.1.3",
     "standard": "^17.0.0"
@@ -23,16 +27,15 @@
   "dependencies": {
     "dns-socket": "^4.2.2",
     "dns2": "^2.0.5",
-    "graceful-goodbye": "^1.2.1",
-    "hyperbee": "^2.4.2",
-    "hypercore": "^10.7.0",
-    "hypercore-crypto": "^3.3.1",
-    "hypercore-id-encoding": "^1.0.2",
-    "hyperswarm": "^4.3.7",
+    "graceful-goodbye": "^1.3.0",
+    "hyperbee": "^2.15.2",
+    "hypercore": "^10.30.0",
+    "hypercore-crypto": "^3.4.0",
+    "hypercore-id-encoding": "^1.2.0",
+    "hyperswarm": "^4.7.3",
     "minimist": "^1.2.8",
     "psl": "^1.9.0",
-    "random-access-memory": "^6.1.0",
     "same-data": "^1.0.0",
-    "xache": "^1.1.0"
+    "xache": "^1.2.0"
   }
 }
