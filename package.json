@@ -1,6 +1,6 @@
 {
   "name": "hyper-nameserver",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Nameserver with Hyperbee (experiment)",
   "main": "index.js",
   "bin": {
